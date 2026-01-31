@@ -1,67 +1,76 @@
 
 /************************
- * ZXS Proxy Engine v1.6.0
+ * ZXS Proxy Engine v1.6.1
  ***********************/
 
 importScripts("scram/scramjet.all.js");
 
-// Auto-detect root path from the Service Worker scope
-const swRoot = self.registration.scope; // e.g., "http://localhost:8080/" or ".../zxs-test-proxy/"
-const swPath = new URL(swRoot).pathname;
-
 const { ScramjetServiceWorker } = $scramjetLoadWorker();
+const scramjet = new ScramjetServiceWorker();
 
-// Explicitly set the prefix to match index.html
-const scramjet = new ScramjetServiceWorker({
-	prefix: swPath + "scram/"
+// We need to wait for config to load before we can route or fetch
+let configLoaded = false;
+const loadingPromise = scramjet.loadConfig().then(() => {
+	configLoaded = true;
+	console.log("ZXS SW: Config Loaded.");
 });
 
 async function handleRequest(event) {
-	await scramjet.loadConfig();
+	if (!configLoaded) await loadingPromise;
 
+	// Check if Scramjet should handle this URL
 	if (scramjet.route(event)) {
-		// Fix: Do NOT spread the event. 
-		// We create a new request with credentials: 'include' for session porting.
-		const modifiedRequest = new Request(event.request, {
-			credentials: "include"
-		});
-
-		// Use the original event but override the request
-		const response = await scramjet.fetch(modifiedRequest, event);
-
-		const contentType = response.headers.get("content-type") || "";
-
-		if (contentType.includes("text/html")) {
-			const originalText = await response.text();
-
-			const stealthScript = `<script>
-                (function() {
-                    const hide = { get: () => undefined, enumerable: true, configurable: true };
-                    Object.defineProperty(navigator, 'webdriver', hide);
-                    window.chrome = { runtime: {} };
-                    window.navigator.plugins = [1,2,3];
-                })();
-            </script>`;
-
-			const modifiedHtml = originalText.replace(
-				/<head[^>]*>/i,
-				(match) => `${match}${stealthScript}`
-			);
-
-			const newHeaders = new Headers(response.headers);
-			newHeaders.delete("content-security-policy");
-			newHeaders.delete("x-frame-options");
-
-			return new Response(modifiedHtml, {
-				status: response.status,
-				statusText: response.statusText,
-				headers: newHeaders,
+		try {
+			// Port credentials for Google Login
+			const modifiedRequest = new Request(event.request, {
+				credentials: "include"
 			});
-		}
 
-		return response;
+			// Correct signature: { request, clientId }
+			const response = await scramjet.fetch({
+				request: modifiedRequest,
+				clientId: event.clientId
+			});
+
+			// Check if we need to inject stealth into HTML
+			const contentType = response.headers.get("content-type") || "";
+			if (contentType.includes("text/html")) {
+				const originalText = await response.text();
+
+				const stealthScript = `<script>
+                    (function() {
+                        const hide = { get: () => undefined, enumerable: true, configurable: true };
+                        Object.defineProperty(navigator, 'webdriver', hide);
+                        window.chrome = { runtime: {} };
+                        window.navigator.plugins = [1,2,3];
+                    })();
+                </script>`;
+
+				const modifiedHtml = originalText.replace(
+					/<head[^>]*>/i,
+					(match) => `${match}${stealthScript}`
+				);
+
+				const newHeaders = new Headers(response.headers);
+				newHeaders.delete("content-security-policy");
+				newHeaders.delete("x-frame-options");
+
+				return new Response(modifiedHtml, {
+					status: response.status,
+					statusText: response.statusText,
+					headers: newHeaders,
+				});
+			}
+
+			return response;
+		} catch (err) {
+			console.error("ZXS SW Fetch Error:", err);
+			// Fallback to error template if available
+			return new Response("ZXS Proxy Interception Error: " + err.message, { status: 500 });
+		}
 	}
 
+	// Default network fetch for non-proxied assets
 	return fetch(event.request);
 }
 

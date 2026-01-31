@@ -9,7 +9,6 @@
     <script src="https://cdn.jsdelivr.net/npm/dreamland"></script>
     <script src="baremux/index.js"></script>
     <script src="scram/scramjet.all.js"></script>
-    <script src="assets/config.js"></script>
 </head>
 
 <body>
@@ -43,11 +42,11 @@
 
         <div class="settings">
             <div class="status">
-                <div class="status-dot"></div>
-                Scramjet Engine Active
+                <div class="status-dot" id="engine-dot"></div>
+                <span id="engine-status">Detecting Engine...</span>
             </div>
             <div class="status">
-                v1.6.0-GH
+                v1.6.1-GH
             </div>
             <div class="status">
                 Wisp: <span id="wisp-display">anura.pro</span>
@@ -55,7 +54,7 @@
         </div>
     </div>
 
-    <!-- Proxy Overlay (Mini Browser) -->
+    <!-- Proxy Overlay -->
     <div id="proxy-overlay">
         <div class="browser-toolbar">
             <div class="nav-controls">
@@ -81,16 +80,13 @@
         var activeFrame = null;
         const { ScramjetController } = $scramjetLoadController();
 
-        // Path detection (v1.6.0)
+        // Path detection (v1.6.1)
         const isGH = location.hostname.includes('github.io');
         const pathSegments = window.location.pathname.split('/').filter(s => s);
         const repoName = isGH ? pathSegments[0] : '';
         const root = isGH ? ("/" + repoName + "/") : "/";
 
-        console.log("ZXS Engine v1.6.0 Booting. Root:", root);
-
         const scramjet = new ScramjetController({
-            // CRITICAL: prefix must match Service Worker's interception path
             prefix: root + "scram/",
             files: {
                 wasm: root + "scram/scramjet.wasm.wasm",
@@ -101,26 +97,31 @@
 
         async function init() {
             try {
-                scramjet.init();
+                // Initialize controller
+                await scramjet.init();
 
+                // Register Service Worker
                 if ("serviceWorker" in navigator) {
-                    // Registration using root-absolute path for maximum stability
-                    await navigator.serviceWorker.register(root + "sw.js", {
-                        scope: root
-                    });
-                    console.log("ZXS Service Worker Registered.");
+                    await navigator.serviceWorker.register(root + "sw.js", { scope: root });
+                    console.log("ZXS SW Registered.");
                 }
 
-                // BareMux requires absolute URLs from components
+                // Connect BareMux
                 const connection = new BareMux.BareMuxConnection(root + "baremux/worker.js");
-                const wispUrl = "wss://anura.pro/";
+                // Use explicit port for Epoxy
+                const wispUrl = "wss://anura.pro:443/";
 
                 await connection.setTransport(root + "epoxy/index.mjs", [{ wisp: wispUrl }]);
                 console.log("BareMux Connection Stable.");
-                document.getElementById('wisp-display').innerText = new URL(wispUrl).hostname;
+
+                document.getElementById('engine-status').innerText = "Engine Stable";
+                document.getElementById('engine-dot').style.backgroundColor = "#22c55e";
+                document.getElementById('wisp-display').innerText = "anura.pro";
             } catch (err) {
-                console.error("Initialization Failed:", err);
-                document.querySelector('.subtitle').innerHTML = `<span style="color:red">STABILITY ERROR: ${err.message}</span>`;
+                console.error("Boot Failure:", err);
+                document.getElementById('engine-status').innerText = "Engine Error";
+                document.getElementById('engine-dot').style.backgroundColor = "#ef4444";
+                document.querySelector('.subtitle').innerHTML = `<span style="color:red">ERROR: ${err.message}</span>`;
             }
         }
 
