@@ -48,7 +48,7 @@
                 Scramjet Engine Active
             </div>
             <div class="status">
-                v1.5.0-GH
+                v1.5.2-GH
             </div>
             <div class="status">
                 Wisp: <span id="wisp-display">anura.pro</span>
@@ -80,15 +80,19 @@
 
     <script>
         // --- GITHUB PAGES PATH FIX ---
+        // Detect if we are in a subdirectory (like /zxs-test-proxy/)
         const isGH = location.hostname.includes('github.io');
-        const basePath = isGH ? window.location.pathname.split('/')[1] : '';
-        const root = isGH ? `/${basePath}/` : '/';
+        const pathSegments = window.location.pathname.split('/').filter(s => s);
+        const repoName = isGH ? pathSegments[0] : '';
+        const root = isGH ? `/${repoName}/` : './';
 
         function handleError(msg) {
             console.error(msg);
             const sub = document.querySelector('.subtitle');
-            if (sub) sub.innerHTML = `<span style="color:#ef4444">ERROR: ${msg}</span>`;
+            if (sub) sub.innerHTML = `<span style="color:#ef4444; font-weight:bold;">ERROR: ${msg}</span>`;
         }
+
+        console.log("Detected Root Path:", root);
 
         const { ScramjetController } = $scramjetLoadController();
         const scramjet = new ScramjetController({
@@ -99,25 +103,31 @@
             },
         });
 
-        console.log("Initializing Scramjet with root:", root);
+        console.log("Initializing Scramjet...");
         try {
             scramjet.init();
-        } catch (e) { handleError("Scramjet Init Failed"); }
+        } catch (e) { handleError("Scramjet Init Failed: " + e.message); }
 
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register(`${root}sw.js`).then(() => console.log("SW Registered"))
-                .catch(err => handleError("SW Registration Failed: " + err));
+            navigator.serviceWorker.register(`${root}sw.js`).then(() => console.log("Service Worker Registered Successfully"))
+                .catch(err => handleError("Service Worker Registration Failed: " + err));
         }
 
+        console.log("Connecting to BareMux...");
         const connection = new BareMux.BareMuxConnection(`${root}baremux/worker.js`);
 
-        const wispServers = ["wss://anura.pro/", "wss://wisp.mercurywork.shop/wisp/"];
+        const wispServers = [
+            "wss://anura.pro/",
+            "wss://wisp.mercurywork.shop/wisp/",
+            "wss://gointospace.app/wisp/"
+        ];
+
         const wispUrl = localStorage.getItem("proxServer") || wispServers[0];
         document.getElementById('wisp-display').innerText = new URL(wispUrl).hostname;
 
         connection.setTransport(`${root}epoxy/index.mjs`, [{ wisp: wispUrl }])
-            .then(() => console.log("BareMux Ready"))
-            .catch(err => handleError("BareMux Failed: " + err));
+            .then(() => console.log("BareMux Transport Set to:", wispUrl))
+            .catch(err => handleError("BareMux Transport Failed: " + err));
 
         let activeFrame = null;
 
