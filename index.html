@@ -47,7 +47,7 @@
                 Scramjet Engine Active
             </div>
             <div class="status">
-                v1.5.5-GH
+                v1.5.6-GH
             </div>
             <div class="status">
                 Wisp: <span id="wisp-display">anura.pro</span>
@@ -81,13 +81,13 @@
         // Global State
         var activeFrame = null;
 
-        // Path Detection Logic
+        // Path Detection Logic (v1.5.6)
         const isGH = location.hostname.includes('github.io');
         const pathSegments = window.location.pathname.split('/').filter(s => s);
         const repoName = isGH ? pathSegments[0] : '';
         const rootPath = isGH ? `/${repoName}/` : '/';
 
-        console.log("ZXS Engine Initializing. Root:", rootPath);
+        console.log("ZXS Engine v1.5.6 Initializing. Root:", rootPath);
 
         const { ScramjetController } = $scramjetLoadController();
         const scramjet = new ScramjetController({

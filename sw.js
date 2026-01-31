@@ -1,18 +1,29 @@
 
 /************************
- * ZXS Proxy Engine v1.5.5
+ * ZXS Proxy Engine v1.5.6
  ***********************/
 
 importScripts("scram/scramjet.all.js");
 
+// Dynamic path detection for Service Worker
+const isGH = self.location.hostname.includes('github.io');
+const pathSegments = self.location.pathname.split('/').filter(s => s);
+// sw.js is at the root of the project, so the repo name is the segment before it
+const repoName = isGH ? pathSegments[0] : '';
+const root = isGH ? `/${repoName}/` : '/';
+
 const { ScramjetServiceWorker } = $scramjetLoadWorker();
-const scramjet = new ScramjetServiceWorker();
+
+// Explicitly tell the worker what the prefix is
+const scramjet = new ScramjetServiceWorker({
+	prefix: root + 'scram/'
+});
 
 async function handleRequest(event) {
+	// Ensure config is loaded with the correct prefix
 	await scramjet.loadConfig();
 
 	if (scramjet.route(event)) {
-		// Shared credentials for session porting
 		const modifiedRequest = new Request(event.request, {
 			credentials: "include"
 		});
@@ -24,7 +35,6 @@ async function handleRequest(event) {
 
 		const contentType = response.headers.get("content-type") || "";
 
-		// Inject basic stealth into HTML
 		if (contentType.includes("text/html")) {
 			const originalText = await response.text();
 
@@ -55,17 +65,9 @@ async function handleRequest(event) {
 		return response;
 	}
 
-	// Normal fetch for non-proxied requests
 	return fetch(event.request);
 }
 
 self.addEventListener("fetch", (event) => {
 	event.respondWith(handleRequest(event));
-});
-
-// BareMux messaging placeholder
-self.addEventListener("message", ({ data }) => {
-	if (data.type === "playgroundData") {
-		// Placeholder for future extensibility
-	}
 });
