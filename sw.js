@@ -1,38 +1,39 @@
 
 /************************
- * ZXS Proxy Engine v1.5.9
- * Based on original ZXS-GAMES logic
+ * ZXS Proxy Engine v1.6.0
  ***********************/
 
-// Standard relative import (works on both local and GH Pages)
 importScripts("scram/scramjet.all.js");
+
+// Auto-detect root path from the Service Worker scope
+const swRoot = self.registration.scope; // e.g., "http://localhost:8080/" or ".../zxs-test-proxy/"
+const swPath = new URL(swRoot).pathname;
 
 const { ScramjetServiceWorker } = $scramjetLoadWorker();
 
-// Allow Scramjet to use its default prefix logic (auto-detects from worker location)
-const scramjet = new ScramjetServiceWorker();
+// Explicitly set the prefix to match index.html
+const scramjet = new ScramjetServiceWorker({
+	prefix: swPath + "scram/"
+});
 
 async function handleRequest(event) {
 	await scramjet.loadConfig();
 
 	if (scramjet.route(event)) {
-		// Use the event as-is (Original ZXS strategy)
-		// Adding credentials: "include" for Google Login porting
+		// Fix: Do NOT spread the event. 
+		// We create a new request with credentials: 'include' for session porting.
 		const modifiedRequest = new Request(event.request, {
 			credentials: "include"
 		});
 
-		const response = await scramjet.fetch({
-			...event,
-			request: modifiedRequest
-		});
+		// Use the original event but override the request
+		const response = await scramjet.fetch(modifiedRequest, event);
 
 		const contentType = response.headers.get("content-type") || "";
 
 		if (contentType.includes("text/html")) {
 			const originalText = await response.text();
 
-			// Standard Stealth Injections
 			const stealthScript = `<script>
                 (function() {
                     const hide = { get: () => undefined, enumerable: true, configurable: true };
@@ -48,7 +49,6 @@ async function handleRequest(event) {
 			);
 
 			const newHeaders = new Headers(response.headers);
-			// Relax security for proxied games
 			newHeaders.delete("content-security-policy");
 			newHeaders.delete("x-frame-options");
 
