@@ -47,7 +47,7 @@
                 Scramjet Engine Active
             </div>
             <div class="status">
-                v1.5.7-GH
+                v1.5.8-GH
             </div>
             <div class="status">
                 Wisp: <span id="wisp-display">anura.pro</span>
@@ -78,42 +78,51 @@
     </div>
 
     <script>
-        // Use standard relative paths for maximum stability
         var activeFrame = null;
-        const { ScramjetController } = $scramjetLoadController();
 
+        // Path detection (Must start with / for BareMux)
+        const isGH = location.hostname.includes('github.io');
+        const pathSegments = window.location.pathname.split('/').filter(s => s);
+        const repoName = isGH ? pathSegments[0] : '';
+        const root = isGH ? ("/" + repoName + "/") : "/";
+
+        console.log("ZXS Logic v1.5.8. Root:", root);
+
+        const { ScramjetController } = $scramjetLoadController();
         const scramjet = new ScramjetController({
-            prefix: "./scram/",
+            prefix: root + "scram/",
             files: {
-                wasm: "./scram/scramjet.wasm.wasm",
-                all: "./scram/scramjet.all.js",
-                sync: "./scram/scramjet.sync.js",
+                wasm: root + "scram/scramjet.wasm.wasm",
+                all: root + "scram/scramjet.all.js",
+                sync: root + "scram/scramjet.sync.js",
             },
         });
 
-        async function initProxy() {
+        async function init() {
             try {
                 scramjet.init();
-                console.log("Scramjet Controller Initialized.");
 
-                if ('serviceWorker' in navigator) {
-                    await navigator.serviceWorker.register("./sw.js");
-                    console.log("Service Worker Registered.");
+                if ("serviceWorker" in navigator) {
+                    await navigator.serviceWorker.register(root + "sw.js", {
+                        scope: root
+                    });
+                    console.log("Service Worker Active.");
                 }
 
-                const connection = new BareMux.BareMuxConnection("./baremux/worker.js");
+                // BareMux requires absolute URLs from components
+                const connection = new BareMux.BareMuxConnection(root + "baremux/worker.js");
                 const wispUrl = "wss://anura.pro/";
 
-                await connection.setTransport("./epoxy/index.mjs", [{ wisp: wispUrl }]);
-                console.log("BareMux Connection Stable.");
+                await connection.setTransport(root + "epoxy/index.mjs", [{ wisp: wispUrl }]);
+                console.log("BareMux Connection Ready.");
                 document.getElementById('wisp-display').innerText = new URL(wispUrl).hostname;
             } catch (err) {
-                console.error("Initialization Failed:", err);
-                document.querySelector('.subtitle').innerHTML = `<span style="color:red">STABILITY ERROR: ${err.message}</span>`;
+                console.error("Init Failure:", err);
+                document.querySelector('.subtitle').innerText = "ERROR: " + err.message;
             }
         }
 
-        initProxy();
+        init();
 
         function launchProxy() {
             const url = document.getElementById('url-input').value;
@@ -130,7 +139,6 @@
             const container = document.getElementById('iframe-container');
             container.innerHTML = '';
 
-            console.log("Launching instance:", url);
             activeFrame = scramjet.createFrame();
             container.appendChild(activeFrame.frame);
 
