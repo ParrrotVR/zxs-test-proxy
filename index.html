@@ -47,7 +47,7 @@
                 Scramjet Engine Active
             </div>
             <div class="status">
-                v1.5.4-GH
+                v1.5.5-GH
             </div>
             <div class="status">
                 Wisp: <span id="wisp-display">anura.pro</span>
@@ -78,59 +78,52 @@
     </div>
 
     <script>
-        let activeFrame = null;
+        // Global State
+        var activeFrame = null;
 
-        // --- GITHUB PAGES PATH FIX ---
-        // Detect if we are in a subdirectory (like /zxs-test-proxy/)
+        // Path Detection Logic
         const isGH = location.hostname.includes('github.io');
         const pathSegments = window.location.pathname.split('/').filter(s => s);
         const repoName = isGH ? pathSegments[0] : '';
-        // BareMux requires paths to start with / or be absolute
-        const root = isGH ? `/${repoName}/` : '/';
+        const rootPath = isGH ? `/${repoName}/` : '/';
 
-        function handleError(msg) {
-            console.error(msg);
-            const sub = document.querySelector('.subtitle');
-            if (sub) sub.innerHTML = `<span style="color:#ef4444; font-weight:bold;">ERROR: ${msg}</span>`;
-        }
-
-        console.log("Detected Root Path:", root);
+        console.log("ZXS Engine Initializing. Root:", rootPath);
 
         const { ScramjetController } = $scramjetLoadController();
         const scramjet = new ScramjetController({
+            prefix: rootPath + 'scram/',
             files: {
-                wasm: `${root}scram/scramjet.wasm.wasm`,
-                all: `${root}scram/scramjet.all.js`,
-                sync: `${root}scram/scramjet.sync.js`,
+                wasm: rootPath + 'scram/scramjet.wasm.wasm',
+                all: rootPath + 'scram/scramjet.all.js',
+                sync: rootPath + 'scram/scramjet.sync.js',
             },
         });
 
-        console.log("Initializing Scramjet...");
-        try {
-            scramjet.init();
-        } catch (e) { handleError("Scramjet Init Failed: " + e.message); }
+        async function initProxy() {
+            try {
+                scramjet.init();
+                console.log("Scramjet Initialized.");
 
-        if ('serviceWorker' in navigator) {
-            // Note: serviceWorker.register ALSO needs a root-relative path
-            navigator.serviceWorker.register(`${root}sw.js`).then(() => console.log("Service Worker Registered Successfully"))
-                .catch(err => handleError("Service Worker Registration Failed: " + err));
+                if ('serviceWorker' in navigator) {
+                    await navigator.serviceWorker.register(rootPath + 'sw.js', {
+                        scope: rootPath
+                    });
+                    console.log("Service Worker Registered.");
+                }
+
+                const connection = new BareMux.BareMuxConnection(rootPath + 'baremux/worker.js');
+                const wispUrl = "wss://anura.pro/";
+
+                await connection.setTransport(rootPath + 'epoxy/index.mjs', [{ wisp: wispUrl }]);
+                console.log("BareMux Ready.");
+                document.getElementById('wisp-display').innerText = new URL(wispUrl).hostname;
+            } catch (err) {
+                console.error("Initialization Failed:", err);
+                document.querySelector('.subtitle').innerHTML = `<span style="color:red">ERROR: ${err.message}</span>`;
+            }
         }
 
-        console.log("Connecting to BareMux...");
-        const connection = new BareMux.BareMuxConnection(`${root}baremux/worker.js`);
-
-        const wispServers = [
-            "wss://anura.pro/",
-            "wss://wisp.mercurywork.shop/wisp/",
-            "wss://gointospace.app/wisp/"
-        ];
-
-        const wispUrl = localStorage.getItem("proxServer") || wispServers[0];
-        document.getElementById('wisp-display').innerText = new URL(wispUrl).hostname;
-
-        connection.setTransport(`${root}epoxy/index.mjs`, [{ wisp: wispUrl }])
-            .then(() => console.log("BareMux Transport Set to:", wispUrl))
-            .catch(err => handleError("BareMux Transport Failed: " + err));
+        initProxy();
 
         function launchProxy() {
             const url = document.getElementById('url-input').value;
@@ -138,7 +131,7 @@
         }
 
         function launchUrl(url) {
-            if (!url || url.trim() === "") return;
+            if (!url) return;
             if (!url.startsWith('http')) url = 'https://' + url;
 
             document.getElementById('proxy-overlay').style.display = 'flex';
@@ -147,7 +140,7 @@
             const container = document.getElementById('iframe-container');
             container.innerHTML = '';
 
-            console.log("Creating Scramjet Frame...");
+            console.log("Launching instance:", url);
             activeFrame = scramjet.createFrame();
             container.appendChild(activeFrame.frame);
 
@@ -155,21 +148,17 @@
             activeFrame.frame.style.height = '100%';
             activeFrame.frame.style.border = 'none';
 
-            // Sync URL bar when navigating within the iframe
             activeFrame.addEventListener("urlchange", (e) => {
-                if (e.url) {
-                    document.getElementById('browser-address-bar').value = e.url;
-                }
+                if (e.url) document.getElementById('browser-address-bar').value = e.url;
             });
 
-            console.log("Navigating Frame to:", url);
             activeFrame.go(url);
         }
 
         function navigateToUrl() {
-            const url = document.getElementById('browser-address-bar').value;
+            const val = document.getElementById('browser-address-bar').value;
             if (activeFrame) {
-                let target = url;
+                let target = val;
                 if (!target.startsWith('http') && target.includes('.')) {
                     target = 'https://' + target;
                 } else if (!target.startsWith('http')) {
@@ -179,39 +168,25 @@
             }
         }
 
-        function goBack() {
-            if (activeFrame) activeFrame.back();
-        }
-
-        function goForward() {
-            if (activeFrame) activeFrame.forward();
-        }
-
-        function reloadPage() {
-            if (activeFrame) activeFrame.reload();
-        }
+        function goBack() { if (activeFrame) activeFrame.back(); }
+        function goForward() { if (activeFrame) activeFrame.forward(); }
+        function reloadPage() { if (activeFrame) activeFrame.reload(); }
 
         function syncIdentity() {
-            // Open a proxied Google login window directly
-            // This bypasses the 'blocked' issue by using the proxy to reach the page, 
-            // but opens it in a new tab to avoid iframe detection.
             const googleLogin = "https://accounts.google.com/ServiceLogin?hl=en";
             const proxiedUrl = scramjet.encodeUrl(googleLogin);
-            const win = window.open(proxiedUrl, "_blank", "width=800,height=700");
-
-            alert("A stealth login window has opened. Sign in to your Google Account there, then come back here and RELOAD the game.");
+            window.open(proxiedUrl, "_blank", "width=800,height=700");
+            alert("Stealth Login Tab opened. Sign in there, then reload your game.");
         }
 
         function closeProxy() {
             if (confirm("Close the stealth browser?")) {
                 document.getElementById('proxy-overlay').style.display = 'none';
-                const container = document.getElementById('iframe-container');
-                container.innerHTML = '';
+                document.getElementById('iframe-container').innerHTML = '';
                 activeFrame = null;
             }
         }
     </script>
-
 </body>
 
 </html>
