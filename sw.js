@@ -1,26 +1,19 @@
 
 /************************
- * ZXS Proxy Engine v1.5.6
+ * ZXS Proxy Engine v1.5.7
  ***********************/
 
+// Using a standard relative path for the worker script
 importScripts("scram/scramjet.all.js");
-
-// Dynamic path detection for Service Worker
-const isGH = self.location.hostname.includes('github.io');
-const pathSegments = self.location.pathname.split('/').filter(s => s);
-// sw.js is at the root of the project, so the repo name is the segment before it
-const repoName = isGH ? pathSegments[0] : '';
-const root = isGH ? `/${repoName}/` : '/';
 
 const { ScramjetServiceWorker } = $scramjetLoadWorker();
 
-// Explicitly tell the worker what the prefix is
+// Standard initialization with relative prefix
 const scramjet = new ScramjetServiceWorker({
-	prefix: root + 'scram/'
+	prefix: "./scram/"
 });
 
 async function handleRequest(event) {
-	// Ensure config is loaded with the correct prefix
 	await scramjet.loadConfig();
 
 	if (scramjet.route(event)) {
