@@ -47,7 +47,7 @@
                 Scramjet Engine Active
             </div>
             <div class="status">
-                v1.5.3-GH
+                v1.5.4-GH
             </div>
             <div class="status">
                 Wisp: <span id="wisp-display">anura.pro</span>
@@ -78,12 +78,15 @@
     </div>
 
     <script>
+        let activeFrame = null;
+
         // --- GITHUB PAGES PATH FIX ---
         // Detect if we are in a subdirectory (like /zxs-test-proxy/)
         const isGH = location.hostname.includes('github.io');
         const pathSegments = window.location.pathname.split('/').filter(s => s);
         const repoName = isGH ? pathSegments[0] : '';
-        const root = isGH ? `/${repoName}/` : './';
+        // BareMux requires paths to start with / or be absolute
+        const root = isGH ? `/${repoName}/` : '/';
 
         function handleError(msg) {
             console.error(msg);
@@ -108,6 +111,7 @@
         } catch (e) { handleError("Scramjet Init Failed: " + e.message); }
 
         if ('serviceWorker' in navigator) {
+            // Note: serviceWorker.register ALSO needs a root-relative path
             navigator.serviceWorker.register(`${root}sw.js`).then(() => console.log("Service Worker Registered Successfully"))
                 .catch(err => handleError("Service Worker Registration Failed: " + err));
         }
@@ -127,8 +131,6 @@
         connection.setTransport(`${root}epoxy/index.mjs`, [{ wisp: wispUrl }])
             .then(() => console.log("BareMux Transport Set to:", wispUrl))
             .catch(err => handleError("BareMux Transport Failed: " + err));
-
-        let activeFrame = null;
 
         function launchProxy() {
             const url = document.getElementById('url-input').value;
