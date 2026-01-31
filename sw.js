@@ -1,42 +1,44 @@
 
 /************************
- * ZXS Proxy Engine v1.5.8
+ * ZXS Proxy Engine v1.5.9
+ * Based on original ZXS-GAMES logic
  ***********************/
 
+// Standard relative import (works on both local and GH Pages)
 importScripts("scram/scramjet.all.js");
-
-// Dynamic path detection for Service Worker
-const swUrl = new URL(self.registration.scope);
-const swPath = swUrl.pathname; // Should be "/" or "/repo/"
-
-console.log("ZXS SW Booting. Scope:", swPath);
 
 const { ScramjetServiceWorker } = $scramjetLoadWorker();
 
-// The prefix MUST be absolute from the root and match index.html exactly
-const scramjet = new ScramjetServiceWorker({
-	prefix: swPath + "scram/"
-});
+// Allow Scramjet to use its default prefix logic (auto-detects from worker location)
+const scramjet = new ScramjetServiceWorker();
 
 async function handleRequest(event) {
 	await scramjet.loadConfig();
 
 	if (scramjet.route(event)) {
-		// Standard fetch through Scramjet
-		// We use the original event to ensure all metadata is preserved
-		const response = await scramjet.fetch(event);
+		// Use the event as-is (Original ZXS strategy)
+		// Adding credentials: "include" for Google Login porting
+		const modifiedRequest = new Request(event.request, {
+			credentials: "include"
+		});
+
+		const response = await scramjet.fetch({
+			...event,
+			request: modifiedRequest
+		});
 
 		const contentType = response.headers.get("content-type") || "";
 
 		if (contentType.includes("text/html")) {
 			const originalText = await response.text();
 
-			// Basic stealth to avoid 'unsecure browser' flags
+			// Standard Stealth Injections
 			const stealthScript = `<script>
                 (function() {
                     const hide = { get: () => undefined, enumerable: true, configurable: true };
                     Object.defineProperty(navigator, 'webdriver', hide);
                     window.chrome = { runtime: {} };
+                    window.navigator.plugins = [1,2,3];
                 })();
             </script>`;
 
@@ -46,6 +48,7 @@ async function handleRequest(event) {
 			);
 
 			const newHeaders = new Headers(response.headers);
+			// Relax security for proxied games
 			newHeaders.delete("content-security-policy");
 			newHeaders.delete("x-frame-options");
 
