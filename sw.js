@@ -22,16 +22,15 @@ async function handleRequest(event) {
 	await scramjet.loadConfig();
 	if (scramjet.route(event)) {
 		const url = new URL(event.request.url);
-		const isAuthFlag = url.hostname.includes("google.com") || url.hostname.includes("discord.com");
+
+		// Clean the request headers
+		const requestHeaders = new Headers(event.request.headers);
+		requestHeaders.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36");
+		requestHeaders.delete("x-powered-by");
 
 		const modifiedRequest = new Request(event.request, {
-			headers: {
-				...Object.fromEntries(event.request.headers),
-				"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-				"sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="121", "Google Chrome";v="121"',
-				"sec-ch-ua-mobile": "?0",
-				"sec-ch-ua-platform": '"Windows"'
-			}
+			headers: requestHeaders,
+			credentials: "include" // CRITICAL for session porting
 		});
 
 		const response = await scramjet.fetch({
@@ -43,22 +42,29 @@ async function handleRequest(event) {
 		if (contentType.includes("text/html")) {
 			let originalText = await response.text();
 
-			// --- DEEP STEALTH PATCH ---
-			// 1. Hide the WebDriver flag from Google
+			// --- ADVANCED STEALTH PATCH v2 ---
 			const stealthScript = `<script>
-				Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-				window.chrome = { runtime: {} };
+				(function() {
+					const hide = {
+						get: () => undefined,
+						enumerable: true,
+						configurable: true
+					};
+					Object.defineProperty(navigator, 'webdriver', hide);
+					Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+					Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+					window.chrome = { runtime: {}, loadTimes: Date.now, csi: () => {} };
+				})();
 			</script>`;
 
-			// 2. Inject stealth script AND remove visible proxy comments
 			const modifiedHtml = originalText.replace(
 				/<head[^>]*>/i,
 				(match) => `${match}${stealthScript}`
 			);
 
 			const newHeaders = new Headers(response.headers);
-			// Remove custom headers that flag proxies
-			newHeaders.delete("x-powered-by");
+			newHeaders.delete("content-security-policy"); // Remove CSP to allow login scripts
+			newHeaders.delete("x-frame-options"); // Allow the login to work in iframes
 
 			return new Response(modifiedHtml, {
 				status: response.status,

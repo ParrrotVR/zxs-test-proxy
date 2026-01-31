@@ -191,14 +191,14 @@
         }
 
         function syncIdentity() {
-            const url = document.getElementById('browser-address-bar').value;
-            if (!url) {
-                alert("Navigate to a website first!");
-                return;
-            }
-            // Open the real site in a tiny window to let Google auth work
-            const win = window.open(url, "_blank", "width=500,height=600");
-            alert("A login window has opened. Sign in there, then come back and click RELOAD in this browser.");
+            // Open a proxied Google login window directly
+            // This bypasses the 'blocked' issue by using the proxy to reach the page, 
+            // but opens it in a new tab to avoid iframe detection.
+            const googleLogin = "https://accounts.google.com/ServiceLogin?hl=en";
+            const proxiedUrl = scramjet.encodeUrl(googleLogin);
+            const win = window.open(proxiedUrl, "_blank", "width=800,height=700");
+
+            alert("A stealth login window has opened. Sign in to your Google Account there, then come back here and RELOAD the game.");
         }
 
         function closeProxy() {
