@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZXS Cloudmoon Tester</title>
+    <link rel="stylesheet" href="index.css">
+    <script src="https://cdn.jsdelivr.net/npm/dreamland"></script>
+    <script src="baremux/index.js"></script>
+    <script src="scram/scramjet.all.js"></script>
+    <script src="scram/scramjet.wasm.wasm"></script>
+    <script src="assets/config.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <h1>ZXS PROXY TESTER</h1>
+        <p class="subtitle">CloudMoon Bypass Engine (Alpha)</p>
+
+        <div class="input-group">
+            <input type="text" id="url-input" placeholder="https://cloudmoonapp.com" value="https://cloudmoonapp.com">
+        </div>
+        <button class="btn" onclick="launchProxy()">Launch Stealth Instance</button>
+
+        <div class="game-grid">
+            <div class="game-card" onclick="launchUrl('https://cloudmoonapp.com')">
+                <span>🌙</span>
+                <p>CloudMoon</p>
+            </div>
+            <div class="game-card" onclick="launchUrl('https://roblox.com')">
+                <span>🎮</span>
+                <p>Roblox</p>
+            </div>
+            <div class="game-card" onclick="launchUrl('https://poki.com')">
+                <span>🕹️</span>
+                <p>Poki Games</p>
+            </div>
+            <div class="game-card" onclick="launchUrl('https://google.com')">
+                <span>🔍</span>
+                <p>Google</p>
+            </div>
+        </div>
+
+        <div class="settings">
+            <div class="status">
+                <div class="status-dot"></div>
+                Scramjet Engine Active
+            </div>
+            <div class="status">
+                Wisp: <span id="wisp-display">anura.pro</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Proxy Overlay (Mini Browser) -->
+    <div id="proxy-overlay">
+        <div class="browser-toolbar">
+            <div class="nav-controls">
+                <button class="nav-btn" title="Back" onclick="goBack()">←</button>
+                <button class="nav-btn" title="Forward" onclick="goForward()">→</button>
+                <button class="nav-btn" title="Reload" onclick="reloadPage()">↻</button>
+            </div>
+
+            <div class="address-bar-container">
+                <span class="url-icon">🔒</span>
+                <input type="text" class="browser-input" id="browser-address-bar" placeholder="Search or enter URL"
+                    onkeyup="if(event.key === 'Enter') navigateToUrl()">
+            </div>
+
+            <button class="nav-btn" title="Fix Login/Google Issues" style="color: #fbd38d;" onclick="syncIdentity()">🔑
+                Sync</button>
+            <button class="exit-btn" onclick="closeProxy()">Exit</button>
+        </div>
+        <div id="iframe-container"></div>
+    </div>
+
+    <script>
+        const { ScramjetController } = $scramjetLoadController();
+        const scramjet = new ScramjetController({
+            files: {
+                wasm: "/scram/scramjet.wasm.wasm",
+                all: "/scram/scramjet.all.js",
+                sync: "/scram/scramjet.sync.js",
+            },
+        });
+
+        console.log("Initializing Scramjet...");
+        scramjet.init();
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register("/sw.js", {
+                scope: "/"
+            }).then(() => console.log("Service Worker Registered Successfully"))
+                .catch(err => console.error("Service Worker Registration Failed:", err));
+        }
+
+        console.log("Connecting to BareMux...");
+        const connection = new BareMux.BareMuxConnection("/baremux/worker.js");
+
+        // Fallback list of Wisp servers
+        const wispServers = [
+            "wss://anura.pro/",
+            "wss://wisp.mercurywork.shop/wisp/",
+            "wss://gointospace.app/wisp/"
+        ];
+
+        const wispUrl = localStorage.getItem("proxServer") || wispServers[0];
+        document.getElementById('wisp-display').innerText = new URL(wispUrl).hostname;
+
+        connection.setTransport("/epoxy/index.mjs", [{ wisp: wispUrl }])
+            .then(() => console.log("BareMux Transport Set to:", wispUrl))
+            .catch(err => console.error("BareMux Transport Failed:", err));
+
+        let activeFrame = null;
+
+        function launchProxy() {
+            const url = document.getElementById('url-input').value;
+            launchUrl(url);
+        }
+
+        function launchUrl(url) {
+            if (!url || url.trim() === "") return;
+            if (!url.startsWith('http')) url = 'https://' + url;
+
+            document.getElementById('proxy-overlay').style.display = 'flex';
+            document.getElementById('browser-address-bar').value = url;
+
+            const container = document.getElementById('iframe-container');
+            container.innerHTML = '';
+
+            console.log("Creating Scramjet Frame...");
+            activeFrame = scramjet.createFrame();
+            container.appendChild(activeFrame.frame);
+
+            activeFrame.frame.style.width = '100%';
+            activeFrame.frame.style.height = '100%';
+            activeFrame.frame.style.border = 'none';
+
+            // Sync URL bar when navigating within the iframe
+            activeFrame.addEventListener("urlchange", (e) => {
+                if (e.url) {
+                    document.getElementById('browser-address-bar').value = e.url;
+                }
+            });
+
+            console.log("Navigating Frame to:", url);
+            activeFrame.go(url);
+        }
+
+        function navigateToUrl() {
+            const url = document.getElementById('browser-address-bar').value;
+            if (activeFrame) {
+                let target = url;
+                if (!target.startsWith('http') && target.includes('.')) {
+                    target = 'https://' + target;
+                } else if (!target.startsWith('http')) {
+                    target = 'https://www.google.com/search?q=' + encodeURIComponent(target);
+                }
+                activeFrame.go(target);
+            }
+        }
+
+        function goBack() {
+            if (activeFrame) activeFrame.back();
+        }
+
+        function goForward() {
+            if (activeFrame) activeFrame.forward();
+        }
+
+        function reloadPage() {
+            if (activeFrame) activeFrame.reload();
+        }
+
+        function syncIdentity() {
+            const url = document.getElementById('browser-address-bar').value;
+            if (!url) {
+                alert("Navigate to a website first!");
+                return;
+            }
+            // Open the real site in a tiny window to let Google auth work
+            const win = window.open(url, "_blank", "width=500,height=600");
+            alert("A login window has opened. Sign in there, then come back and click RELOAD in this browser.");
+        }
+
+        function closeProxy() {
+            if (confirm("Close the stealth browser?")) {
+                document.getElementById('proxy-overlay').style.display = 'none';
+                const container = document.getElementById('iframe-container');
+                container.innerHTML = '';
+                activeFrame = null;
+            }
+        }
+    </script>
+
+</body>
+
+</html>
